@@ -1,10 +1,17 @@
 // Load environment variables from .env file
 require("dotenv").config();
-
 const TelegramBot = require("node-telegram-bot-api");
 const { exec } = require("child_process");
+const util = require("util");
+
+// Promisify exec for better async/await handling
+const execAsync = util.promisify(exec);
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
+if (!token) {
+  throw new Error("TELEGRAM_BOT_TOKEN is not defined in .env file");
+}
+
 const bot = new TelegramBot(token, { polling: true });
 
 // List of allowed user IDs
@@ -17,7 +24,7 @@ bot.onText(/\/start/, (msg) => {
   bot.sendMessage(chatId, "Send /run to execute the script.");
 });
 
-bot.onText(/\/run/, (msg) => {
+bot.onText(/\/run/, async (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
 
@@ -33,19 +40,23 @@ bot.onText(/\/run/, (msg) => {
   // Send a message indicating that the script is starting
   bot.sendMessage(chatId, "Looking for free games...");
 
-  // Execute the script
-  exec("~/claim_games_bot/claim_games.sh", (error, stdout, stderr) => {
-    if (error) {
+  try {
+    // Execute the script
+    const { stdout, stderr } = await execAsync(
+      "~/claim_games_bot/claim_games.sh"
+    );
+    if (stderr) {
       // If there is an error, send the error message
       bot.sendMessage(chatId, `Error: ${stderr}`);
     } else {
       // Parse the stdout to format the message
       const formattedMessage = formatScriptOutput(stdout);
-
       // Send the formatted message
       bot.sendMessage(chatId, formattedMessage, { parse_mode: "Markdown" });
     }
-  });
+  } catch (error) {
+    bot.sendMessage(chatId, `Execution failed: ${error.message}`);
+  }
 });
 
 // Function to format the script output
