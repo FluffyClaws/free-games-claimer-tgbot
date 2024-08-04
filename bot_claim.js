@@ -50,7 +50,7 @@ bot.onText(/\/run/, async (msg) => {
       bot.sendMessage(chatId, `Error: ${stderr}`);
     } else {
       // Parse the stdout to format the message
-      const formattedMessage = formatScriptOutput(stdout);
+      const formattedMessage = formatScriptOutput(stdout, chatId);
       // Send the formatted message
       bot.sendMessage(chatId, formattedMessage, { parse_mode: "Markdown" });
     }
@@ -60,34 +60,62 @@ bot.onText(/\/run/, async (msg) => {
 });
 
 // Function to format the script output
-function formatScriptOutput(output) {
+function formatScriptOutput(output, chatId) {
   // Split the output by lines
   const lines = output.trim().split("\n");
 
   // Initialize variables to store formatted sections
   let formattedMessage = "";
   let epicGamesFound = false; // Flag to check if Epic Games section was found
-  let currentGame = ""; // Store the current game title
-  let currentGameLink = ""; // Store the current game link
+  let games = []; // Array to store game objects with title and link
+  let currentLink = ""; // Store the current link being processed
 
   // Loop through each line of the output
   for (let line of lines) {
+    bot.sendMessage(chatId, `Processing line: ${line}`); // Debug log to Telegram
+
     if (line.includes("started checking gog")) {
       formattedMessage += `GoG - Currently no free giveaway!\n`;
     } else if (line.includes("started checking epic-games")) {
       formattedMessage += `Epic Games - `;
       epicGamesFound = true;
     } else if (line.includes("Free games:") && epicGamesFound) {
-      const match = line.match(/\[ '(.+?)' \]/);
-      if (match) {
-        currentGameLink = match[1];
+      // Extract all links from the Free games line
+      const matches = line.match(/'([^']+)'/g);
+      if (matches) {
+        currentLink = matches[0].replace(/'/g, "");
+        bot.sendMessage(chatId, `Current link: ${currentLink}`); // Debug log to Telegram
       }
     } else if (line.includes("Current free game:") && epicGamesFound) {
-      currentGame = line.replace("Current free game: ", "").trim();
+      const gameTitle = line.replace("Current free game: ", "").trim();
+      games.push({ title: gameTitle, link: currentLink, inLibrary: false });
+      bot.sendMessage(
+        chatId,
+        `Current game: ${gameTitle} with link: ${currentLink}`
+      ); // Debug log to Telegram
     } else if (line.includes("Already in library!") && epicGamesFound) {
-      formattedMessage += ` [${currentGame}](${currentGameLink}) (Already in library)`;
+      const currentGame = games[games.length - 1];
+      if (currentGame) {
+        currentGame.inLibrary = true;
+      }
+    } else if (line.includes("'https://store.epicgames.com/en-US/p/")) {
+      currentLink = line.match(/'(.*?)'/)[1];
+      bot.sendMessage(chatId, `Found game link: ${currentLink}`); // Debug log to Telegram
     }
   }
+
+  // Format the games into the message
+  games.forEach((game) => {
+    if (game.link) {
+      formattedMessage += `[${game.title}](${game.link}) (${
+        game.inLibrary ? "Already in library" : "New"
+      })\n`;
+    } else {
+      formattedMessage += `${game.title} (${
+        game.inLibrary ? "Already in library" : "New"
+      })\n`;
+    }
+  });
 
   return formattedMessage;
 }
