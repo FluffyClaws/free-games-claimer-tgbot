@@ -23,16 +23,17 @@ const allowedUserIds = process.env.ALLOWED_USER_IDS.split(",").map((id) =>
 
 const lockFileRun = path.resolve(__dirname, "script_run.lock");
 const lockFileDebug = path.resolve(__dirname, "script_debug.lock");
+const lockFileRaw = path.resolve(__dirname, "script_raw.lock");
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   bot.sendMessage(
     chatId,
-    "Send /run to execute the script or /debug to execute the script with debug messages."
+    "Send /run to execute the script, /debug to execute with debug messages, or /raw to get the raw output."
   );
 });
 
-async function runScript(chatId, userId, debugMode = false) {
+async function runScript(chatId, userId, debugMode = false, rawMode = false) {
   // Check if the user is allowed to execute the command
   if (!allowedUserIds.includes(userId)) {
     bot.sendMessage(
@@ -43,7 +44,11 @@ async function runScript(chatId, userId, debugMode = false) {
   }
 
   // Check which lock file to use
-  const lockFile = debugMode ? lockFileDebug : lockFileRun;
+  const lockFile = rawMode
+    ? lockFileRaw
+    : debugMode
+    ? lockFileDebug
+    : lockFileRun;
 
   // Check if the script is already running
   if (fs.existsSync(lockFile)) {
@@ -74,12 +79,16 @@ async function runScript(chatId, userId, debugMode = false) {
       outputMessage += `Error: ${stderr}\n`;
     }
 
-    // Process and format the stdout
-    const formattedMessage = debugMode
-      ? formatScriptOutputWithDebug(stdout)
-      : formatScriptOutput(stdout);
+    if (rawMode) {
+      outputMessage += formatRawOutput(stdout);
+    } else {
+      // Process and format the stdout
+      const formattedMessage = debugMode
+        ? formatScriptOutputWithDebug(stdout)
+        : formatScriptOutput(stdout);
 
-    outputMessage += formattedMessage;
+      outputMessage += formattedMessage;
+    }
 
     // Send the formatted message
     bot.sendMessage(chatId, outputMessage, { parse_mode: "Markdown" });
@@ -106,6 +115,19 @@ bot.onText(/\/debug/, async (msg) => {
   const userId = msg.from.id;
   await runScript(chatId, userId, true);
 });
+
+bot.onText(/\/raw/, async (msg) => {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  await runScript(chatId, userId, false, true);
+});
+
+// Function to format the raw script output
+function formatRawOutput(output) {
+  // Simply return the raw output as is
+  // If the output is too long, consider splitting it into multiple messages
+  return output;
+}
 
 // Function to format the script output for /run command
 function formatScriptOutput(output) {
