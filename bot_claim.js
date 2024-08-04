@@ -33,7 +33,13 @@ bot.onText(/\/start/, (msg) => {
   );
 });
 
-async function runScript(chatId, userId, debugMode = false, rawMode = false) {
+async function runScript(
+  chatId,
+  userId,
+  debugMode = false,
+  rawMode = false,
+  commandMessageId = null
+) {
   // Check if the user is allowed to execute the command
   if (!allowedUserIds.includes(userId)) {
     bot.sendMessage(
@@ -64,8 +70,14 @@ async function runScript(chatId, userId, debugMode = false, rawMode = false) {
     return;
   }
 
-  // Send a message indicating that the script is starting
-  bot.sendMessage(chatId, "Looking for free games...");
+  // Send a message indicating that the script is starting and store its ID
+  let statusMessage;
+  try {
+    statusMessage = await bot.sendMessage(chatId, "Looking for free games...");
+  } catch (error) {
+    bot.sendMessage(chatId, "Failed to send status message.");
+    return;
+  }
 
   try {
     // Execute the script
@@ -91,7 +103,7 @@ async function runScript(chatId, userId, debugMode = false, rawMode = false) {
     }
 
     // Send the formatted message
-    bot.sendMessage(chatId, outputMessage, { parse_mode: "Markdown" });
+    await bot.sendMessage(chatId, outputMessage, { parse_mode: "Markdown" });
   } catch (error) {
     bot.sendMessage(chatId, `Execution failed: ${error.message}`);
   } finally {
@@ -101,25 +113,46 @@ async function runScript(chatId, userId, debugMode = false, rawMode = false) {
     } catch (error) {
       // Handle potential error, e.g., file not found
     }
+
+    // Delete the initial status message
+    if (statusMessage) {
+      try {
+        await bot.deleteMessage(chatId, statusMessage.message_id);
+      } catch (error) {
+        // Handle potential error, e.g., message not found
+      }
+    }
+
+    // Delete the command message if provided
+    if (commandMessageId) {
+      try {
+        await bot.deleteMessage(chatId, commandMessageId);
+      } catch (error) {
+        // Handle potential error, e.g., message not found
+      }
+    }
   }
 }
 
 bot.onText(/\/run/, async (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
-  await runScript(chatId, userId);
+  const commandMessageId = msg.message_id;
+  await runScript(chatId, userId, false, false, commandMessageId);
 });
 
 bot.onText(/\/debug/, async (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
-  await runScript(chatId, userId, true);
+  const commandMessageId = msg.message_id;
+  await runScript(chatId, userId, true, false, commandMessageId);
 });
 
 bot.onText(/\/raw/, async (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
-  await runScript(chatId, userId, false, true);
+  const commandMessageId = msg.message_id;
+  await runScript(chatId, userId, false, true, commandMessageId);
 });
 
 // Function to format the raw script output
