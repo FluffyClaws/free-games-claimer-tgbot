@@ -27,10 +27,14 @@ const lockFileRaw = path.resolve(__dirname, "script_raw.lock");
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  bot.sendMessage(
-    chatId,
-    "Send /run to execute the script, /debug to execute with debug messages, or /raw to get the raw output."
-  );
+  bot
+    .sendMessage(
+      chatId,
+      "Send /run to execute the script, /debug to execute with debug messages, or /raw to get the raw output."
+    )
+    .catch((error) => {
+      console.error("Failed to send start message:", error);
+    });
 });
 
 async function runScript(
@@ -42,10 +46,11 @@ async function runScript(
 ) {
   // Check if the user is allowed to execute the command
   if (!allowedUserIds.includes(userId)) {
-    bot.sendMessage(
-      chatId,
-      "Sorry, you are not authorized to use this command."
-    );
+    bot
+      .sendMessage(chatId, "Sorry, you are not authorized to use this command.")
+      .catch((error) => {
+        console.error("Failed to send authorization message:", error);
+      });
     return;
   }
 
@@ -58,7 +63,11 @@ async function runScript(
 
   // Check if the script is already running
   if (fs.existsSync(lockFile)) {
-    bot.sendMessage(chatId, "Script is already running. Please wait.");
+    bot
+      .sendMessage(chatId, "Script is already running. Please wait.")
+      .catch((error) => {
+        console.error("Failed to send script running message:", error);
+      });
     return;
   }
 
@@ -66,7 +75,14 @@ async function runScript(
   try {
     fs.writeFileSync(lockFile, "locked");
   } catch (error) {
-    bot.sendMessage(chatId, "Failed to create lock file. Try again.");
+    bot
+      .sendMessage(chatId, "Failed to create lock file. Try again.")
+      .catch((error) => {
+        console.error(
+          "Failed to send lock file creation error message:",
+          error
+        );
+      });
     return;
   }
 
@@ -75,7 +91,9 @@ async function runScript(
   try {
     statusMessage = await bot.sendMessage(chatId, "Looking for free games...");
   } catch (error) {
-    bot.sendMessage(chatId, "Failed to send status message.");
+    bot.sendMessage(chatId, "Failed to send status message.").catch((error) => {
+      console.error("Failed to send status message error message:", error);
+    });
     return;
   }
 
@@ -105,13 +123,17 @@ async function runScript(
     // Send the formatted message
     await bot.sendMessage(chatId, outputMessage, { parse_mode: "Markdown" });
   } catch (error) {
-    bot.sendMessage(chatId, `Execution failed: ${error.message}`);
+    bot
+      .sendMessage(chatId, `Execution failed: ${error.message}`)
+      .catch((error) => {
+        console.error("Failed to send execution failed message:", error);
+      });
   } finally {
     // Remove the lock file after execution
     try {
       fs.unlinkSync(lockFile);
     } catch (error) {
-      // Handle potential error, e.g., file not found
+      console.error("Failed to remove lock file:", error);
     }
 
     // Delete the initial status message
@@ -119,7 +141,7 @@ async function runScript(
       try {
         await bot.deleteMessage(chatId, statusMessage.message_id);
       } catch (error) {
-        // Handle potential error, e.g., message not found
+        console.error("Failed to delete status message:", error);
       }
     }
 
@@ -128,7 +150,7 @@ async function runScript(
       try {
         await bot.deleteMessage(chatId, commandMessageId);
       } catch (error) {
-        // Handle potential error, e.g., message not found
+        console.error("Failed to delete command message:", error);
       }
     }
   }
