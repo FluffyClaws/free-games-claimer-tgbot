@@ -2,8 +2,6 @@ require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const { exec } = require("child_process");
 const util = require("util");
-const fs = require("fs").promises;
-const path = require("path");
 
 const execAsync = util.promisify(exec);
 
@@ -18,30 +16,38 @@ const allowedUserIds = process.env.ALLOWED_USER_IDS.split(",").map((id) =>
   parseInt(id.trim())
 );
 
-const lockFiles = {
-  run: path.resolve(__dirname, "script_run.lock"),
-  debug: path.resolve(__dirname, "script_debug.lock"),
-  raw: path.resolve(__dirname, "script_raw.lock"),
+// Logging function to log with timestamp
+const log = (message) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${message}`);
+};
+
+const logError = (message) => {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] ${message}`);
 };
 
 const sendMessage = async (chatId, message, options = {}) => {
   try {
+    log(`Sending message to chat ${chatId}: ${message}`);
     return await bot.sendMessage(chatId, message, options);
   } catch (error) {
-    console.error(`Failed to send message: ${error.message}`);
+    logError(`Failed to send message to chat ${chatId}: ${error.message}`);
   }
 };
 
 const deleteMessage = async (chatId, messageId) => {
   try {
+    log(`Deleting message ${messageId} from chat ${chatId}`);
     await bot.deleteMessage(chatId, messageId);
   } catch (error) {
-    console.error(`Failed to delete message: ${error.message}`);
+    logError(`Failed to delete message ${messageId}: ${error.message}`);
   }
 };
 
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
+  log(`Received /start command from chat ${chatId}`);
   await sendMessage(
     chatId,
     "Send /run to execute the script, /debug to execute with debug messages, or /raw to get the raw output."
@@ -49,34 +55,21 @@ bot.onText(/\/start/, async (msg) => {
 });
 
 const runScript = async (chatId, userId, mode, commandMessageId) => {
+  log(`User ${userId} requested /${mode} in chat ${chatId}`);
+
   if (!allowedUserIds.includes(userId)) {
     await sendMessage(
       chatId,
       "Sorry, you are not authorized to use this command."
     );
-    return;
-  }
-
-  const lockFile = lockFiles[mode];
-
-  try {
-    await fs.access(lockFile);
-    await sendMessage(chatId, "Script is already running. Please wait.");
-    return;
-  } catch (error) {
-    // Lock file doesn't exist, continue execution
-  }
-
-  try {
-    await fs.writeFile(lockFile, "locked");
-  } catch (error) {
-    await sendMessage(chatId, "Failed to create lock file. Try again.");
+    log(`Unauthorized access attempt by user ${userId}`);
     return;
   }
 
   const statusMessage = await sendMessage(chatId, "Looking for free games...");
 
   try {
+    log(`Executing script for user ${userId} in mode: ${mode}`);
     const { stdout, stderr } = await execAsync(
       "~/claim_games_bot/claim_games.sh"
     );
@@ -85,10 +78,11 @@ const runScript = async (chatId, userId, mode, commandMessageId) => {
     outputMessage += formatOutput(stdout, mode);
 
     await sendMessage(chatId, outputMessage, { parse_mode: "Markdown" });
+    log(`Script execution completed for user ${userId} in mode: ${mode}`);
   } catch (error) {
+    logError(`Script execution failed for user ${userId}: ${error.message}`);
     await sendMessage(chatId, `Execution failed: ${error.message}`);
   } finally {
-    await fs.unlink(lockFile);
     if (statusMessage) {
       await deleteMessage(chatId, statusMessage.message_id);
     }
@@ -104,15 +98,30 @@ const formatOutput = (output, mode) => {
   const lines = output.trim().split("\n");
   let formattedMessage = "";
   let epicGamesFound = false;
+  let gogGamesFound = false;
   let games = [];
   let currentLink = "";
 
   for (let line of lines) {
     if (mode === "debug") formattedMessage += `Processing line: ${line}\n`;
 
+    // GoG logic
     if (line.includes("started checking gog")) {
-      formattedMessage += `GoG - Currently no free giveaway!\n`;
-    } else if (line.includes("started checking epic-games")) {
+      formattedMessage += `GoG - `;
+      gogGamesFound = true;
+    } else if (line.includes("Free games:") && gogGamesFound) {
+      // Assuming the GoG link will have a specific pattern
+      currentLink = "'https://gog.com/free-games-placeholder'";
+    } else if (line.includes("Current free game:") && gogGamesFound) {
+      const gameTitle = line.replace("Current free game: ", "").trim();
+      games.push({ title: gameTitle, link: currentLink, inLibrary: false });
+    } else if (line.includes("Already in library!") && gogGamesFound) {
+      const currentGame = games[games.length - 1];
+      if (currentGame) currentGame.inLibrary = true;
+    }
+
+    // Epic Games logic
+    else if (line.includes("started checking epic-games")) {
       formattedMessage += `Epic Games - `;
       epicGamesFound = true;
     } else if (line.includes("Free games:") && epicGamesFound) {
@@ -129,6 +138,7 @@ const formatOutput = (output, mode) => {
     }
   }
 
+  // Add formatted output for games
   games.forEach((game) => {
     formattedMessage += game.link
       ? `[${game.title}](${game.link}) (${
