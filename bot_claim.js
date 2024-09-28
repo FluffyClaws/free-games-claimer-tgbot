@@ -2,7 +2,6 @@ require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const { exec } = require("child_process");
 const util = require("util");
-const path = require("path");
 
 const execAsync = util.promisify(exec);
 
@@ -99,15 +98,30 @@ const formatOutput = (output, mode) => {
   const lines = output.trim().split("\n");
   let formattedMessage = "";
   let epicGamesFound = false;
+  let gogGamesFound = false;
   let games = [];
   let currentLink = "";
 
   for (let line of lines) {
     if (mode === "debug") formattedMessage += `Processing line: ${line}\n`;
 
+    // GoG logic
     if (line.includes("started checking gog")) {
-      formattedMessage += `GoG - Currently no free giveaway!\n`;
-    } else if (line.includes("started checking epic-games")) {
+      formattedMessage += `GoG - `;
+      gogGamesFound = true;
+    } else if (line.includes("Free games:") && gogGamesFound) {
+      // Assuming the GoG link will have a specific pattern
+      currentLink = "'https://gog.com/free-games-placeholder'";
+    } else if (line.includes("Current free game:") && gogGamesFound) {
+      const gameTitle = line.replace("Current free game: ", "").trim();
+      games.push({ title: gameTitle, link: currentLink, inLibrary: false });
+    } else if (line.includes("Already in library!") && gogGamesFound) {
+      const currentGame = games[games.length - 1];
+      if (currentGame) currentGame.inLibrary = true;
+    }
+
+    // Epic Games logic
+    else if (line.includes("started checking epic-games")) {
       formattedMessage += `Epic Games - `;
       epicGamesFound = true;
     } else if (line.includes("Free games:") && epicGamesFound) {
@@ -124,6 +138,7 @@ const formatOutput = (output, mode) => {
     }
   }
 
+  // Add formatted output for games
   games.forEach((game) => {
     formattedMessage += game.link
       ? `[${game.title}](${game.link}) (${
