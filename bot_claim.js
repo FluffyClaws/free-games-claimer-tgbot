@@ -17,24 +17,38 @@ const allowedUserIds = process.env.ALLOWED_USER_IDS.split(",").map((id) =>
   parseInt(id.trim())
 );
 
+// Logging function to log with timestamp
+const log = (message) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${message}`);
+};
+
+const logError = (message) => {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] ${message}`);
+};
+
 const sendMessage = async (chatId, message, options = {}) => {
   try {
+    log(`Sending message to chat ${chatId}: ${message}`);
     return await bot.sendMessage(chatId, message, options);
   } catch (error) {
-    console.error(`Failed to send message: ${error.message}`);
+    logError(`Failed to send message to chat ${chatId}: ${error.message}`);
   }
 };
 
 const deleteMessage = async (chatId, messageId) => {
   try {
+    log(`Deleting message ${messageId} from chat ${chatId}`);
     await bot.deleteMessage(chatId, messageId);
   } catch (error) {
-    console.error(`Failed to delete message: ${error.message}`);
+    logError(`Failed to delete message ${messageId}: ${error.message}`);
   }
 };
 
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
+  log(`Received /start command from chat ${chatId}`);
   await sendMessage(
     chatId,
     "Send /run to execute the script, /debug to execute with debug messages, or /raw to get the raw output."
@@ -42,17 +56,21 @@ bot.onText(/\/start/, async (msg) => {
 });
 
 const runScript = async (chatId, userId, mode, commandMessageId) => {
+  log(`User ${userId} requested /${mode} in chat ${chatId}`);
+
   if (!allowedUserIds.includes(userId)) {
     await sendMessage(
       chatId,
       "Sorry, you are not authorized to use this command."
     );
+    log(`Unauthorized access attempt by user ${userId}`);
     return;
   }
 
   const statusMessage = await sendMessage(chatId, "Looking for free games...");
 
   try {
+    log(`Executing script for user ${userId} in mode: ${mode}`);
     const { stdout, stderr } = await execAsync(
       "~/claim_games_bot/claim_games.sh"
     );
@@ -61,7 +79,9 @@ const runScript = async (chatId, userId, mode, commandMessageId) => {
     outputMessage += formatOutput(stdout, mode);
 
     await sendMessage(chatId, outputMessage, { parse_mode: "Markdown" });
+    log(`Script execution completed for user ${userId} in mode: ${mode}`);
   } catch (error) {
+    logError(`Script execution failed for user ${userId}: ${error.message}`);
     await sendMessage(chatId, `Execution failed: ${error.message}`);
   } finally {
     if (statusMessage) {
