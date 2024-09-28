@@ -2,7 +2,6 @@ require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const { exec } = require("child_process");
 const util = require("util");
-const fs = require("fs").promises;
 const path = require("path");
 
 const execAsync = util.promisify(exec);
@@ -17,12 +16,6 @@ const bot = new TelegramBot(token, { polling: true });
 const allowedUserIds = process.env.ALLOWED_USER_IDS.split(",").map((id) =>
   parseInt(id.trim())
 );
-
-const lockFiles = {
-  run: path.resolve(__dirname, "script_run.lock"),
-  debug: path.resolve(__dirname, "script_debug.lock"),
-  raw: path.resolve(__dirname, "script_raw.lock"),
-};
 
 const sendMessage = async (chatId, message, options = {}) => {
   try {
@@ -57,23 +50,6 @@ const runScript = async (chatId, userId, mode, commandMessageId) => {
     return;
   }
 
-  const lockFile = lockFiles[mode];
-
-  try {
-    await fs.access(lockFile);
-    await sendMessage(chatId, "Script is already running. Please wait.");
-    return;
-  } catch (error) {
-    // Lock file doesn't exist, continue execution
-  }
-
-  try {
-    await fs.writeFile(lockFile, "locked");
-  } catch (error) {
-    await sendMessage(chatId, "Failed to create lock file. Try again.");
-    return;
-  }
-
   const statusMessage = await sendMessage(chatId, "Looking for free games...");
 
   try {
@@ -88,7 +64,6 @@ const runScript = async (chatId, userId, mode, commandMessageId) => {
   } catch (error) {
     await sendMessage(chatId, `Execution failed: ${error.message}`);
   } finally {
-    await fs.unlink(lockFile);
     if (statusMessage) {
       await deleteMessage(chatId, statusMessage.message_id);
     }
