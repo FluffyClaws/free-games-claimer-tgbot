@@ -18,12 +18,16 @@ const allowedUserIds = process.env.ALLOWED_USER_IDS.split(",").map((id) =>
 
 // Logging function to log with timestamp
 const log = (message) => {
-  const timestamp = new Date().toISOString();
+  const timestamp = new Date().toLocaleString("en-US", {
+    timeZone: "Europe/Kyiv",
+  });
   console.log(`[${timestamp}] ${message}`);
 };
 
 const logError = (message) => {
-  const timestamp = new Date().toISOString();
+  const timestamp = new Date().toLocaleString("en-US", {
+    timeZone: "Europe/Kyiv",
+  });
   console.error(`[${timestamp}] ${message}`);
 };
 
@@ -106,11 +110,10 @@ const formatOutput = (output, mode) => {
     if (mode === "debug") formattedMessage += `Processing line: ${line}\n`;
 
     // GoG logic
-    if (line.includes("started checking gog")) {
-      formattedMessage += `GoG - `;
-      gogGamesFound = true;
+    if (line.includes("Currently no free giveaway!")) {
+      formattedMessage += `GoG - Currently no free giveaway!\n`;
     } else if (line.includes("Free games:") && gogGamesFound) {
-      // Assuming the GoG link will have a specific pattern
+      // gog link placeholder
       currentLink = "'https://gog.com/free-games-placeholder'";
     } else if (line.includes("Current free game:") && gogGamesFound) {
       const gameTitle = line.replace("Current free game: ", "").trim();
