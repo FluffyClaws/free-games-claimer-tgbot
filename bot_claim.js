@@ -102,55 +102,83 @@ const formatOutput = (output, mode) => {
   const lines = output.trim().split("\n");
   let formattedMessage = "";
   let epicGamesFound = false;
-  let gogGamesFound = false;
+  let gogFound = false; // Track if any GoG games are found
   let games = [];
-  let currentLink = "";
 
   for (let line of lines) {
     if (mode === "debug") formattedMessage += `Processing line: ${line}\n`;
 
     // GoG logic
     if (line.includes("Currently no free giveaway!")) {
-      formattedMessage += `GoG - Currently no free giveaway!\n`;
-    } else if (line.includes("Free games:") && gogGamesFound) {
-      // gog link placeholder
-      currentLink = "'https://gog.com/free-games-placeholder'";
-    } else if (line.includes("Current free game:") && gogGamesFound) {
-      const gameTitle = line.replace("Current free game: ", "").trim();
-      games.push({ title: gameTitle, link: currentLink, inLibrary: false });
-    } else if (line.includes("Already in library!") && gogGamesFound) {
+      formattedMessage += "GoG - Currently no free giveaway!\n";
+    } else if (line.includes("Current free game:")) {
+      const match = line.match(
+        /Current free game: (.*?) - (https:\/\/www\.gog\.com\/en\/game\/\S+)/
+      );
+      if (match) {
+        const gameTitle = match[1].trim();
+        const gameLink = match[2];
+        games.push({ title: gameTitle, link: gameLink, inLibrary: false });
+        gogFound = true; // Mark GoG game found
+      }
+    } else if (line.includes("Already in library!") && games.length > 0) {
       const currentGame = games[games.length - 1];
       if (currentGame) currentGame.inLibrary = true;
     }
 
     // Epic Games logic
     else if (line.includes("started checking epic-games")) {
-      formattedMessage += `Epic Games - `;
-      epicGamesFound = true;
+      epicGamesFound = true; // Mark that we are checking Epic Games
     } else if (line.includes("Free games:") && epicGamesFound) {
-      const matches = line.match(/'([^']+)'/g);
-      if (matches) currentLink = matches[0].replace(/'/g, "");
-    } else if (line.includes("Current free game:") && epicGamesFound) {
-      const gameTitle = line.replace("Current free game: ", "").trim();
-      games.push({ title: gameTitle, link: currentLink, inLibrary: false });
+      const linkMatch = line.match(/Free games: \[ '(.*?)' \]/);
+      if (linkMatch) {
+        const gameLink = linkMatch[1]; // Extracting the link
+        const gameTitleMatch = lines[lines.indexOf(line) + 1]?.match(
+          /Current free game: (.*)/
+        );
+        if (gameTitleMatch) {
+          const gameTitle = gameTitleMatch[1].trim(); // Title from the next line
+          games.push({ title: gameTitle, link: gameLink, inLibrary: false });
+        }
+      }
     } else if (line.includes("Already in library!") && epicGamesFound) {
       const currentGame = games[games.length - 1];
       if (currentGame) currentGame.inLibrary = true;
-    } else if (line.includes("'https://store.epicgames.com/en-US/p/")) {
-      currentLink = line.match(/'(.*?)'/)[1];
     }
   }
 
-  // Add formatted output for games
-  games.forEach((game) => {
-    formattedMessage += game.link
-      ? `[${game.title}](${game.link}) (${
-          game.inLibrary ? "Already in library" : "New"
-        })\n`
-      : `${game.title} (${game.inLibrary ? "Already in library" : "New"})\n`;
-  });
+  // Output formatting for GoG and Epic Games
+  if (gogFound) {
+    formattedMessage += "GoG: ";
+    games.forEach((game) => {
+      if (game.link.includes("gog.com")) {
+        formattedMessage += game.link
+          ? `[${game.title}](${game.link}) (${
+              game.inLibrary ? "Already in library" : "New"
+            })\n`
+          : `${game.title} (${
+              game.inLibrary ? "Already in library" : "New"
+            })\n`;
+      }
+    });
+  }
 
-  return formattedMessage;
+  if (epicGamesFound) {
+    formattedMessage += "Epic Games: ";
+    games.forEach((game) => {
+      if (game.link.includes("epicgames.com")) {
+        formattedMessage += game.link
+          ? `[${game.title}](${game.link}) (${
+              game.inLibrary ? "Already in library" : "New"
+            })\n`
+          : `${game.title} (${
+              game.inLibrary ? "Already in library" : "New"
+            })\n`;
+      }
+    });
+  }
+
+  return formattedMessage || "No free games found.";
 };
 
 const commandHandler = async (msg, mode) => {
