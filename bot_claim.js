@@ -105,8 +105,6 @@ const formatOutput = (output, mode) => {
   let gogFound = false;
   const games = [];
 
-  let currentEpicGame = null; // Track the current Epic Game being processed
-
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (mode === "debug") formattedMessage += `Processing line: ${line}\n`;
@@ -121,9 +119,6 @@ const formatOutput = (output, mode) => {
         games.push({ title: gameTitle, link: null, inLibrary: false });
         gogFound = true;
       }
-    } else if (line.includes("Already in library!")) {
-      const lastGame = games[games.length - 1];
-      if (lastGame) lastGame.inLibrary = true;
     }
 
     // Epic Games logic
@@ -136,7 +131,7 @@ const formatOutput = (output, mode) => {
           /'(https:\/\/store\.epicgames\.com\/\S+)'/
         );
         if (gameLinkMatch) {
-          currentEpicGame = {
+          const currentEpicGame = {
             title: null,
             link: gameLinkMatch[1],
             inLibrary: false,
@@ -154,9 +149,20 @@ const formatOutput = (output, mode) => {
           lastGameWithoutTitle.title = gameTitle;
         }
       }
-    } else if (line.includes("Already in library!")) {
-      const lastGame = games[games.length - 1];
-      if (lastGame) lastGame.inLibrary = true;
+    }
+
+    // Handling "Already in library!" line correctly
+    if (line.includes("Already in library!")) {
+      // The previous line contains the current game's title
+      const previousLine = lines[i - 1];
+      const titleMatch = previousLine.match(/Current free game: (.+)/);
+      if (titleMatch) {
+        const gameTitle = titleMatch[1].trim();
+        const lastGame = games.find((game) => game.title === gameTitle);
+        if (lastGame) {
+          lastGame.inLibrary = true; // Mark as inLibrary if the title matches
+        }
+      }
     }
   }
 
