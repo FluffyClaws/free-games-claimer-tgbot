@@ -102,78 +102,95 @@ const formatOutput = (output, mode) => {
   const lines = output.trim().split("\n");
   let formattedMessage = "";
   let epicGamesFound = false;
-  let gogFound = false; // Track if any GoG games are found
-  let games = [];
+  let gogFound = false;
+  const games = [];
+  let gogNoGiveaway = false; // Flag to indicate no giveaway for GoG
 
-  for (let line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     if (mode === "debug") formattedMessage += `Processing line: ${line}\n`;
 
     // GoG logic
     if (line.includes("Currently no free giveaway!")) {
-      formattedMessage += "GoG - Currently no free giveaway!\n";
+      gogNoGiveaway = true; // Set flag for GoG no giveaway
     } else if (line.includes("Current free game:")) {
-      const match = line.match(
-        /Current free game: (.*?) - (https:\/\/www\.gog\.com\/en\/game\/\S+)/
-      );
+      const match = line.match(/Current free game: (.+)/);
       if (match) {
         const gameTitle = match[1].trim();
-        const gameLink = match[2];
-        games.push({ title: gameTitle, link: gameLink, inLibrary: false });
-        gogFound = true; // Mark GoG game found
+        games.push({ title: gameTitle, link: null, inLibrary: false });
+        gogFound = true;
       }
-    } else if (line.includes("Already in library!") && games.length > 0) {
-      const currentGame = games[games.length - 1];
-      if (currentGame) currentGame.inLibrary = true;
     }
 
     // Epic Games logic
-    else if (line.includes("started checking epic-games")) {
-      epicGamesFound = true; // Mark that we are checking Epic Games
+    if (line.includes("started checking epic-games")) {
+      epicGamesFound = true;
     } else if (line.includes("Free games:") && epicGamesFound) {
-      const linkMatch = line.match(/Free games: \[ '(.*?)' \]/);
-      if (linkMatch) {
-        const gameLink = linkMatch[1]; // Extracting the link
-        const gameTitleMatch = lines[lines.indexOf(line) + 1]?.match(
-          /Current free game: (.*)/
+      // Collect multiple game links for Epic Games
+      while (lines[i + 1] && lines[i + 1].trim().startsWith("'")) {
+        const gameLinkMatch = lines[i + 1].match(
+          /'(https:\/\/store\.epicgames\.com\/\S+)'/
         );
-        if (gameTitleMatch) {
-          const gameTitle = gameTitleMatch[1].trim(); // Title from the next line
-          games.push({ title: gameTitle, link: gameLink, inLibrary: false });
+        if (gameLinkMatch) {
+          const currentEpicGame = {
+            title: null,
+            link: gameLinkMatch[1],
+            inLibrary: false,
+          };
+          games.push(currentEpicGame);
+        }
+        i++;
+      }
+    } else if (line.includes("Current free game:")) {
+      const gameTitleMatch = line.match(/Current free game: (.+)/);
+      if (gameTitleMatch) {
+        const gameTitle = gameTitleMatch[1].trim();
+        const lastGameWithoutTitle = games.find((game) => !game.title);
+        if (lastGameWithoutTitle) {
+          lastGameWithoutTitle.title = gameTitle;
         }
       }
-    } else if (line.includes("Already in library!") && epicGamesFound) {
-      const currentGame = games[games.length - 1];
-      if (currentGame) currentGame.inLibrary = true;
+    }
+
+    // Handling "Already in library!" line correctly
+    if (line.includes("Already in library!")) {
+      // The previous line contains the current game's title
+      const previousLine = lines[i - 1];
+      const titleMatch = previousLine.match(/Current free game: (.+)/);
+      if (titleMatch) {
+        const gameTitle = titleMatch[1].trim();
+        const lastGame = games.find((game) => game.title === gameTitle);
+        if (lastGame) {
+          lastGame.inLibrary = true; // Mark as inLibrary if the title matches
+        }
+      }
     }
   }
 
-  // Output formatting for GoG and Epic Games
-  if (gogFound) {
-    formattedMessage += "GoG: ";
+  // Format the output for GoG
+  if (gogFound || gogNoGiveaway) {
+    formattedMessage += "GoG:\n";
+    if (gogNoGiveaway) {
+      formattedMessage += "Currently no free giveaway!\n";
+    }
     games.forEach((game) => {
-      if (game.link.includes("gog.com")) {
-        formattedMessage += game.link
-          ? `[${game.title}](${game.link}) (${
-              game.inLibrary ? "Already in library" : "New"
-            })\n`
-          : `${game.title} (${
-              game.inLibrary ? "Already in library" : "New"
-            })\n`;
+      if (game.link?.includes("gog.com")) {
+        formattedMessage += `[${game.title || "Unknown"}](${game.link}) (${
+          game.inLibrary ? "Already in library" : "New"
+        })\n`;
       }
     });
   }
+  formattedMessage += "\n"; // Add a blank line
 
+  // Format the output for Epic Games
   if (epicGamesFound) {
-    formattedMessage += "Epic Games: ";
+    formattedMessage += "Epic Games:\n";
     games.forEach((game) => {
-      if (game.link.includes("epicgames.com")) {
-        formattedMessage += game.link
-          ? `[${game.title}](${game.link}) (${
-              game.inLibrary ? "Already in library" : "New"
-            })\n`
-          : `${game.title} (${
-              game.inLibrary ? "Already in library" : "New"
-            })\n`;
+      if (game.link?.includes("epicgames.com")) {
+        formattedMessage += `[${game.title || "Unknown"}](${game.link}) (${
+          game.inLibrary ? "Already in library" : "New"
+        })\n`;
       }
     });
   }
