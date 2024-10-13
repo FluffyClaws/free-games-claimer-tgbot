@@ -104,6 +104,7 @@ const formatOutput = (output, mode) => {
   let epicGamesFound = false;
   let gogFound = false;
   const games = [];
+  let gogNoGiveaway = false; // Flag to indicate no giveaway for GoG
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -111,7 +112,7 @@ const formatOutput = (output, mode) => {
 
     // GoG logic
     if (line.includes("Currently no free giveaway!")) {
-      formattedMessage += "GoG - Currently no free giveaway!\n";
+      gogNoGiveaway = true; // Set flag for GoG no giveaway
     } else if (line.includes("Current free game:")) {
       const match = line.match(/Current free game: (.+)/);
       if (match) {
@@ -166,9 +167,12 @@ const formatOutput = (output, mode) => {
     }
   }
 
-  // Format the output
-  if (gogFound) {
+  // Format the output for GoG
+  if (gogFound || gogNoGiveaway) {
     formattedMessage += "GoG:\n";
+    if (gogNoGiveaway) {
+      formattedMessage += "Currently no free giveaway!\n";
+    }
     games.forEach((game) => {
       if (game.link?.includes("gog.com")) {
         formattedMessage += `[${game.title || "Unknown"}](${game.link}) (${
@@ -177,7 +181,9 @@ const formatOutput = (output, mode) => {
       }
     });
   }
+  formattedMessage += "\n"; // Add a blank line
 
+  // Format the output for Epic Games
   if (epicGamesFound) {
     formattedMessage += "Epic Games:\n";
     games.forEach((game) => {
