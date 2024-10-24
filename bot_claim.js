@@ -126,20 +126,17 @@ const formatOutput = (output, mode) => {
     if (line.includes("started checking epic-games")) {
       epicGamesFound = true;
     } else if (line.includes("Free games:") && epicGamesFound) {
-      // Collect multiple game links for Epic Games
-      while (lines[i + 1] && lines[i + 1].trim().startsWith("'")) {
-        const gameLinkMatch = lines[i + 1].match(
-          /'(https:\/\/store\.epicgames\.com\/\S+)'/
-        );
-        if (gameLinkMatch) {
-          const currentEpicGame = {
-            title: null,
-            link: gameLinkMatch[1],
-            inLibrary: false,
-          };
-          games.push(currentEpicGame);
-        }
-        i++;
+      // Check for single or multiple games
+      const gameLinkMatch = line.match(
+        /'(https:\/\/store\.epicgames\.com\/\S+)'/
+      );
+      if (gameLinkMatch) {
+        const currentEpicGame = {
+          title: null,
+          link: gameLinkMatch[1],
+          inLibrary: false,
+        };
+        games.push(currentEpicGame);
       }
     } else if (line.includes("Current free game:")) {
       const gameTitleMatch = line.match(/Current free game: (.+)/);
