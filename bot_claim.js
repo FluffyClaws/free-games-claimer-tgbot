@@ -126,23 +126,28 @@ const formatOutput = (output, mode) => {
     if (line.includes("started checking epic-games")) {
       epicGamesFound = true;
     } else if (line.includes("Free games:") && epicGamesFound) {
-      // Check for single or multiple games
-      const gameLinkMatch = line.match(
-        /'(https:\/\/store\.epicgames\.com\/\S+)'/
-      );
-      if (gameLinkMatch) {
-        const currentEpicGame = {
-          title: null,
-          link: gameLinkMatch[1],
-          inLibrary: false,
-        };
-        games.push(currentEpicGame);
+      // Collect multiple game URLs under "Free games:"
+      let j = i + 1;
+      while (
+        j < lines.length &&
+        lines[j].includes("https://store.epicgames.com")
+      ) {
+        const gameLinkMatch = lines[j].match(
+          /'(https:\/\/store\.epicgames\.com\/\S+)'/
+        );
+        if (gameLinkMatch) {
+          games.push({ title: null, link: gameLinkMatch[1], inLibrary: false });
+        }
+        j++;
       }
+      i = j - 1; // Move `i` to the last processed line
     } else if (line.includes("Current free game:")) {
       const gameTitleMatch = line.match(/Current free game: (.+)/);
       if (gameTitleMatch) {
         const gameTitle = gameTitleMatch[1].trim();
-        const lastGameWithoutTitle = games.find((game) => !game.title);
+        const lastGameWithoutTitle = games.find(
+          (game) => !game.title && game.link?.includes("epicgames.com")
+        );
         if (lastGameWithoutTitle) {
           lastGameWithoutTitle.title = gameTitle;
         }
