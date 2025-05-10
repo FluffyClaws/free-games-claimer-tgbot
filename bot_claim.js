@@ -54,7 +54,7 @@ bot.onText(/\/start/, async (msg) => {
   log(`Received /start command from chat ${chatId}`);
   await sendMessage(
     chatId,
-    "Send /run to execute the script, /debug to execute with debug messages, or /raw to get the raw output."
+    "Send /run_gog, /run_eg, /debug, or /raw to execute the script."
   );
 });
 
@@ -70,18 +70,28 @@ const runScript = async (chatId, userId, mode, commandMessageId) => {
     return;
   }
 
-  const statusMessage = await sendMessage(chatId, "Looking for free games...");
+  const scriptMap = {
+    run_gog: "./claim_gog.sh",
+    run_eg: "./claim_eg.sh",
+    // debug: "./claim_debug.sh", // Optional: Add a script for debug if needed
+    // raw: "./claim_raw.sh",    // Optional: Add a script for raw if needed
+  };
+
+  const scriptPath = scriptMap[mode];
+  if (!scriptPath) {
+    await sendMessage(chatId, `Invalid mode: ${mode}`);
+    logError(`Invalid mode requested: ${mode}`);
+    return;
+  }
+
+  const statusMessage = await sendMessage(chatId, "Executing script...");
 
   try {
     log(`Executing script for user ${userId} in mode: ${mode}`);
-    const { stdout, stderr } = await execAsync(
-      "~/free-games-claimer-tgbot/claim_games.sh"
-    );
+    const { stdout, stderr } = await execAsync(scriptPath);
 
-    let outputMessage = stderr ? `Error: ${stderr}\n` : "";
-    outputMessage += formatOutput(stdout, mode);
-
-    await sendMessage(chatId, outputMessage, { parse_mode: "Markdown" });
+    const outputMessage = stderr ? `Error: ${stderr}\n` : stdout;
+    await sendMessage(chatId, outputMessage);
     log(`Script execution completed for user ${userId} in mode: ${mode}`);
   } catch (error) {
     logError(`Script execution failed for user ${userId}: ${error.message}`);
@@ -96,117 +106,15 @@ const runScript = async (chatId, userId, mode, commandMessageId) => {
   }
 };
 
-const formatOutput = (output, mode) => {
-  if (mode === "raw") return output;
-
-  const lines = output.trim().split("\n");
-  let formattedMessage = "";
-  let epicGamesFound = false;
-  let gogFound = false;
-  const games = [];
-  let gogNoGiveaway = false; // Flag to indicate no giveaway for GoG
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (mode === "debug") formattedMessage += `Processing line: ${line}\n`;
-
-    // GoG logic
-    if (line.includes("Currently no free giveaway!")) {
-      gogNoGiveaway = true; // Set flag for GoG no giveaway
-    } else if (line.includes("Current free game:")) {
-      const match = line.match(/Current free game: (.+)/);
-      if (match) {
-        const gameTitle = match[1].trim();
-        games.push({ title: gameTitle, link: null, inLibrary: false });
-        gogFound = true;
-      }
-    }
-
-    // Epic Games logic
-    if (line.includes("started checking epic-games")) {
-      epicGamesFound = true;
-    } else if (line.includes("Free games:") && epicGamesFound) {
-      // Collect multiple game URLs under "Free games:"
-      let j = i + 1;
-      while (
-        j < lines.length &&
-        lines[j].includes("https://store.epicgames.com")
-      ) {
-        const gameLinkMatch = lines[j].match(
-          /'(https:\/\/store\.epicgames\.com\/\S+)'/
-        );
-        if (gameLinkMatch) {
-          games.push({ title: null, link: gameLinkMatch[1], inLibrary: false });
-        }
-        j++;
-      }
-      i = j - 1; // Move `i` to the last processed line
-    } else if (line.includes("Current free game:")) {
-      const gameTitleMatch = line.match(/Current free game: (.+)/);
-      if (gameTitleMatch) {
-        const gameTitle = gameTitleMatch[1].trim();
-        const lastGameWithoutTitle = games.find(
-          (game) => !game.title && game.link?.includes("epicgames.com")
-        );
-        if (lastGameWithoutTitle) {
-          lastGameWithoutTitle.title = gameTitle;
-        }
-      }
-    }
-
-    // Handling "Already in library!" line correctly
-    if (line.includes("Already in library!")) {
-      // The previous line contains the current game's title
-      const previousLine = lines[i - 1];
-      const titleMatch = previousLine.match(/Current free game: (.+)/);
-      if (titleMatch) {
-        const gameTitle = titleMatch[1].trim();
-        const lastGame = games.find((game) => game.title === gameTitle);
-        if (lastGame) {
-          lastGame.inLibrary = true; // Mark as inLibrary if the title matches
-        }
-      }
-    }
-  }
-
-  // Format the output for GoG
-  if (gogFound || gogNoGiveaway) {
-    formattedMessage += "GoG:\n";
-    if (gogNoGiveaway) {
-      formattedMessage += "Currently no free giveaway!\n";
-    }
-    games.forEach((game) => {
-      if (game.link?.includes("gog.com")) {
-        formattedMessage += `[${game.title || "Unknown"}](${game.link}) (${
-          game.inLibrary ? "Already in library" : "New"
-        })\n`;
-      }
-    });
-  }
-  formattedMessage += "\n"; // Add a blank line
-
-  // Format the output for Epic Games
-  if (epicGamesFound) {
-    formattedMessage += "Epic Games:\n";
-    games.forEach((game) => {
-      if (game.link?.includes("epicgames.com")) {
-        formattedMessage += `[${game.title || "Unknown"}](${game.link}) (${
-          game.inLibrary ? "Already in library" : "New"
-        })\n`;
-      }
-    });
-  }
-
-  return formattedMessage || "No free games found.";
-};
-
 const commandHandler = async (msg, mode) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const commandMessageId = msg.message_id;
+
   await runScript(chatId, userId, mode, commandMessageId);
 };
 
-bot.onText(/\/run/, (msg) => commandHandler(msg, "run"));
+bot.onText(/\/run_gog/, (msg) => commandHandler(msg, "run_gog"));
+bot.onText(/\/run_eg/, (msg) => commandHandler(msg, "run_eg"));
 bot.onText(/\/debug/, (msg) => commandHandler(msg, "debug"));
 bot.onText(/\/raw/, (msg) => commandHandler(msg, "raw"));
